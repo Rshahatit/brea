@@ -1,0 +1,196 @@
+// Brea - AI Dating Liaison
+// Database Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// USER & PROFILE
+// ============================================================================
+
+model User {
+  id           String    @id @default(cuid())
+  firebaseUid  String    @unique
+  isAnonymous  Boolean   @default(true)
+  email        String?   @unique
+  phone        String?   @unique
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  lastActiveAt DateTime  @default(now())
+
+  profile        Profile?
+  sentMatches    Match[]        @relation("UserMatches")
+  receivedMatches Match[]       @relation("MatchedWithUser")
+  consentEvents  ConsentEvent[]
+  sessions       Session[]
+
+  @@index([firebaseUid])
+  @@index([lastActiveAt])
+}
+
+model Profile {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Core profile data (extracted by Brea)
+  values         String[]
+  dealbreakers   String[]
+
+  // Personality tags (JSON for flexibility)
+  personalityTags Json?
+
+  // Hypotheses and knowledge gaps
+  hypotheses     Json[]  @default([])
+  knowledgeGaps  Json[]  @default([])
+
+  // Photo
+  photoUrl       String?
+  photoAnalysis  Json?
+
+  // Seed persona flag
+  isSeed         Boolean @default(false)
+  displayName    String?
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([isSeed])
+}
+
+// ============================================================================
+// MATCHING & SIMULATION
+// ============================================================================
+
+model Match {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation("UserMatches", fields: [userId], references: [id], onDelete: Cascade)
+
+  matchedWithId String
+  matchedWith   User   @relation("MatchedWithUser", fields: [matchedWithId], references: [id], onDelete: Cascade)
+
+  // Simulation results
+  compatibilityScore Int
+  confidenceLevel    ConfidenceLevel
+  whyMatched         String[]
+  potentialFriction  String[]
+  unknowns           Json[]
+
+  // Redacted transcript
+  transcript         Json[]
+
+  // Safety check
+  safetyStatus       SafetyStatus @default(OK)
+  safetyNotes        String?
+
+  // Status
+  status             MatchStatus @default(PENDING)
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  consentEvent       ConsentEvent?
+
+  @@unique([userId, matchedWithId])
+  @@index([userId])
+  @@index([matchedWithId])
+  @@index([status])
+}
+
+enum ConfidenceLevel {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum SafetyStatus {
+  OK
+  FLAGGED
+}
+
+enum MatchStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+// ============================================================================
+// CONSENT TRACKING
+// ============================================================================
+
+model ConsentEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  matchId   String   @unique
+  match     Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  action    ConsentAction
+
+  // Invite link (generated if approved)
+  inviteLink String?
+  inviteExpiry DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+enum ConsentAction {
+  APPROVE
+  REJECT
+}
+
+// ============================================================================
+// SESSION MANAGEMENT
+// ============================================================================
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Session state
+  isActive     Boolean  @default(true)
+
+  // Conversation context (for continuity)
+  context      Json?
+
+  // Intelligence chips accumulated during session
+  chips        Json[]   @default([])
+
+  createdAt    DateTime @default(now())
+  endedAt      DateTime?
+
+  @@index([userId, isActive])
+}
+
+// ============================================================================
+// DAILY DEBRIEF
+// ============================================================================
+
+model Debrief {
+  id           String   @id @default(cuid())
+  userId       String
+
+  // Questions to ask
+  assumptions  Json[]   @default([])
+  gapFills     Json[]   @default([])
+  rejectionReasons Json[] @default([])
+
+  // Status
+  completed    Boolean  @default(false)
+
+  createdAt    DateTime @default(now())
+  completedAt  DateTime?
+
+  @@index([userId, completed])
+}
