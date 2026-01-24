@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+.pnpm-store/
 .pnp
 .pnp.js
 
@@ -8,6 +9,7 @@ dist/
 build/
 .next/
 out/
+*.tsbuildinfo
 
 # Environment variables
 .env
@@ -56,3 +58,19 @@ firebase-debug.log
 # Misc
 *.tgz
 .cache/
+
+# React Native mobile app (deprecated - using native iOS)
+apps/mobile/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+
+# Xcode
+*.xcuserstate
+xcuserdata/
+DerivedData/
+*.xcworkspace/xcuserdata/
