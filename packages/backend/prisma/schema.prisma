@@ -1,6 +1,3 @@
-// Brea - AI Dating Liaison
-// Database Schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,187 +7,124 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ============================================================================
-// USER & PROFILE
-// ============================================================================
-
 model User {
-  id           String    @id @default(cuid())
-  firebaseUid  String    @unique
-  isAnonymous  Boolean   @default(true)
-  email        String?   @unique
-  phone        String?   @unique
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  lastActiveAt DateTime  @default(now())
+  id            String   @id @default(cuid())
+  firebaseUid   String   @unique
+  isAnonymous   Boolean  @default(true)
+  displayName   String?
+  email         String?  @unique
+  phone         String?  @unique
+  photoUrl      String?
 
-  profile        Profile?
-  sentMatches    Match[]        @relation("UserMatches")
-  receivedMatches Match[]       @relation("MatchedWithUser")
-  consentEvents  ConsentEvent[]
-  sessions       Session[]
+  // Profile data (extracted from voice/photo)
+  values        String[] @default([])
+  dealbreakers  String[] @default([])
+  personalityTags Json?  // PersonalityTags type
+  hypotheses    Json[]   @default([]) // Hypothesis[]
+  knowledgeGaps Json[]   @default([]) // KnowledgeGap[]
+
+  // Seed persona flag
+  isSeed        Boolean  @default(false)
+
+  // Timestamps
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  lastActiveAt  DateTime @default(now())
+
+  // Relations
+  matchesAsA    Match[]  @relation("UserA")
+  matchesAsB    Match[]  @relation("UserB")
+  consentEvents ConsentEvent[]
+  sessions      Session[]
 
   @@index([firebaseUid])
+  @@index([isSeed])
   @@index([lastActiveAt])
 }
 
-model Profile {
-  id        String   @id @default(cuid())
-  userId    String   @unique
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  // Core profile data (extracted by Brea)
-  values         String[]
-  dealbreakers   String[]
-
-  // Personality tags (JSON for flexibility)
-  personalityTags Json?
-
-  // Hypotheses and knowledge gaps
-  hypotheses     Json[]  @default([])
-  knowledgeGaps  Json[]  @default([])
-
-  // Photo
-  photoUrl       String?
-  photoAnalysis  Json?
-
-  // Seed persona flag
-  isSeed         Boolean @default(false)
-  displayName    String?
-
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  @@index([isSeed])
-}
-
-// ============================================================================
-// MATCHING & SIMULATION
-// ============================================================================
-
 model Match {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation("UserMatches", fields: [userId], references: [id], onDelete: Cascade)
+  id                  String   @id @default(cuid())
 
-  matchedWithId String
-  matchedWith   User   @relation("MatchedWithUser", fields: [matchedWithId], references: [id], onDelete: Cascade)
+  // Participants
+  userAId             String
+  userA               User     @relation("UserA", fields: [userAId], references: [id])
+  userBId             String
+  userB               User     @relation("UserB", fields: [userBId], references: [id])
 
-  // Simulation results
-  compatibilityScore Int
-  confidenceLevel    ConfidenceLevel
-  whyMatched         String[]
-  potentialFriction  String[]
-  unknowns           Json[]
+  // Sandbox results
+  compatibilityScore  Int      // 0-100
+  confidenceLevel     String   // HIGH | MEDIUM | LOW
+  whyMatched          String[]
+  potentialFriction   String[]
+  unknowns            Json[]   // SandboxUnknown[]
+  redactedTranscript  Json[]   // TranscriptEntry[]
+  safety              Json     // SafetyAssessment
 
-  // Redacted transcript
-  transcript         Json[]
-
-  // Safety check
-  safetyStatus       SafetyStatus @default(OK)
-  safetyNotes        String?
+  // Scenario metadata
+  scenarioType        String   // e.g., "10AM_SATURDAY", "CONFLICT_RESOLUTION"
 
   // Status
-  status             MatchStatus @default(PENDING)
+  status              MatchStatus @default(PENDING)
 
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  // Timestamps
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
-  consentEvent       ConsentEvent?
+  // Relations
+  consentEvents       ConsentEvent[]
 
-  @@unique([userId, matchedWithId])
-  @@index([userId])
-  @@index([matchedWithId])
+  @@unique([userAId, userBId, scenarioType])
+  @@index([userAId])
+  @@index([userBId])
   @@index([status])
-}
-
-enum ConfidenceLevel {
-  HIGH
-  MEDIUM
-  LOW
-}
-
-enum SafetyStatus {
-  OK
-  FLAGGED
 }
 
 enum MatchStatus {
   PENDING
-  APPROVED
-  REJECTED
-  EXPIRED
+  VIEWED
+  INVITED
+  ACCEPTED
+  DECLINED
+  DATE_SCHEDULED
 }
-
-// ============================================================================
-// CONSENT TRACKING
-// ============================================================================
 
 model ConsentEvent {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  matchId   String   @unique
-  match     Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  id          String   @id @default(cuid())
 
-  action    ConsentAction
+  // Who and what
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  matchId     String
+  match       Match    @relation(fields: [matchId], references: [id])
 
-  // Invite link (generated if approved)
-  inviteLink String?
-  inviteExpiry DateTime?
+  // Event details
+  eventType   String   // profile_view, transcript_view, invite_sent, etc.
+  metadata    Json?
 
-  createdAt DateTime @default(now())
+  // Timestamp
+  createdAt   DateTime @default(now())
 
   @@index([userId])
+  @@index([matchId])
+  @@index([eventType])
 }
-
-enum ConsentAction {
-  APPROVE
-  REJECT
-}
-
-// ============================================================================
-// SESSION MANAGEMENT
-// ============================================================================
 
 model Session {
-  id           String   @id @default(cuid())
-  userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id          String   @id @default(cuid())
 
-  // Session state
-  isActive     Boolean  @default(true)
+  // User
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
 
-  // Conversation context (for continuity)
-  context      Json?
+  // Session data
+  transcript  Json[]   @default([]) // Full conversation history
+  state       String   @default("idle") // SessionState
 
-  // Intelligence chips accumulated during session
-  chips        Json[]   @default([])
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  endedAt     DateTime?
 
-  createdAt    DateTime @default(now())
-  endedAt      DateTime?
-
-  @@index([userId, isActive])
-}
-
-// ============================================================================
-// DAILY DEBRIEF
-// ============================================================================
-
-model Debrief {
-  id           String   @id @default(cuid())
-  userId       String
-
-  // Questions to ask
-  assumptions  Json[]   @default([])
-  gapFills     Json[]   @default([])
-  rejectionReasons Json[] @default([])
-
-  // Status
-  completed    Boolean  @default(false)
-
-  createdAt    DateTime @default(now())
-  completedAt  DateTime?
-
-  @@index([userId, completed])
+  @@index([userId])
+  @@index([state])
 }

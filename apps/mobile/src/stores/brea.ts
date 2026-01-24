@@ -1,134 +1,91 @@
-import { create } from 'zustand';
-import type { IntelligenceChip } from '../types';
+/**
+ * Brea Store
+ *
+ * Global state management for the Brea voice session.
+ * Handles session state, intelligence chips, and transcriptions.
+ */
 
-export type SessionStatus =
-  | 'idle'
-  | 'connecting'
-  | 'connected'
-  | 'listening'
-  | 'processing'
-  | 'speaking'
-  | 'error';
+import { create } from "zustand";
+import type {
+  SessionState,
+  IntelligenceUpdate,
+  TranscriptionData,
+} from "@brea/shared";
 
-interface BreaMssageBase {
-  id: string;
-  timestamp: number;
-}
-
-interface UserMessage extends BreaMssageBase {
-  type: 'user';
-  transcription: string;
-}
-
-interface BreaPMessageBase extends BreaMssageBase {
-  type: 'brea';
-  transcription: string;
-  chips: IntelligenceChip[];
-}
-
-type BreaMessage = UserMessage | BreaPMessageBase;
-
-interface BreastState {
+interface BreaState {
   // Session state
-  sessionId: string | null;
-  status: SessionStatus;
-  error: string | null;
+  sessionState: SessionState;
+  isConnected: boolean;
 
-  // Conversation state
-  messages: BreaMessage[];
-  currentTranscription: string;
-  chips: IntelligenceChip[];
-
-  // Audio state
-  isRecording: boolean;
-  isMuted: boolean;
+  // Real-time data
+  intelligenceChips: IntelligenceUpdate[];
+  transcriptions: TranscriptionData[];
 
   // Actions
-  setStatus: (status: SessionStatus) => void;
-  setSessionId: (sessionId: string | null) => void;
-  setError: (error: string | null) => void;
-
-  addUserMessage: (transcription: string) => void;
-  addBreaPMessage: (transcription: string, chips: IntelligenceChip[]) => void;
-  updateCurrentTranscription: (text: string) => void;
-  clearCurrentTranscription: () => void;
-
-  addChips: (newChips: IntelligenceChip[]) => void;
-
-  setIsRecording: (isRecording: boolean) => void;
-  setIsMuted: (isMuted: boolean) => void;
-
+  setSessionState: (state: SessionState) => void;
+  setConnected: (connected: boolean) => void;
+  addIntelligenceChip: (chip: IntelligenceUpdate) => void;
+  addTranscription: (transcription: TranscriptionData) => void;
+  clearChips: () => void;
+  clearTranscriptions: () => void;
   reset: () => void;
 }
 
-const initialState = {
-  sessionId: null,
-  status: 'idle' as SessionStatus,
-  error: null,
-  messages: [],
-  currentTranscription: '',
-  chips: [],
-  isRecording: false,
-  isMuted: false,
-};
+export const useBreaStore = create<BreaState>((set) => ({
+  // Initial state
+  sessionState: "idle",
+  isConnected: false,
+  intelligenceChips: [],
+  transcriptions: [],
 
-export const useBreaPStore = create<BreastState>((set) => ({
-  ...initialState,
+  // Session state management
+  setSessionState: (state: SessionState) => {
+    set({ sessionState: state });
+  },
 
-  setStatus: (status) => set({ status }),
-  setSessionId: (sessionId) => set({ sessionId }),
-  setError: (error) => set({ error, status: error ? 'error' : 'idle' }),
+  setConnected: (connected: boolean) => {
+    set({ isConnected: connected });
+  },
 
-  addUserMessage: (transcription) =>
+  // Intelligence chips - what Brea learns during conversation
+  addIntelligenceChip: (chip: IntelligenceUpdate) => {
+    set((state) => {
+      // Avoid duplicate chips
+      const exists = state.intelligenceChips.some(
+        (c) => c.type === chip.type && c.value === chip.value
+      );
+      if (exists) return state;
+
+      return {
+        intelligenceChips: [...state.intelligenceChips, chip],
+      };
+    });
+  },
+
+  // Transcriptions for accessibility and debugging
+  addTranscription: (transcription: TranscriptionData) => {
     set((state) => ({
-      messages: [
-        ...state.messages,
-        {
-          id: `user-${Date.now()}`,
-          type: 'user',
-          transcription,
-          timestamp: Date.now(),
-        },
-      ],
-    })),
+      transcriptions: [...state.transcriptions, transcription],
+    }));
+  },
 
-  addBreaPMessage: (transcription, chips) =>
-    set((state) => ({
-      messages: [
-        ...state.messages,
-        {
-          id: `brea-${Date.now()}`,
-          type: 'brea',
-          transcription,
-          chips,
-          timestamp: Date.now(),
-        },
-      ],
-    })),
+  // Clear intelligence chips (e.g., on new session)
+  clearChips: () => {
+    set({ intelligenceChips: [] });
+  },
 
-  updateCurrentTranscription: (text) =>
-    set((state) => ({
-      currentTranscription: state.currentTranscription + text,
-    })),
+  // Clear transcriptions
+  clearTranscriptions: () => {
+    set({ transcriptions: [] });
+  },
 
-  clearCurrentTranscription: () => set({ currentTranscription: '' }),
-
-  addChips: (newChips) =>
-    set((state) => ({
-      chips: [
-        ...state.chips,
-        ...newChips.filter(
-          (newChip) =>
-            !state.chips.some(
-              (existing) =>
-                existing.type === newChip.type && existing.label === newChip.label
-            )
-        ),
-      ],
-    })),
-
-  setIsRecording: (isRecording) => set({ isRecording }),
-  setIsMuted: (isMuted) => set({ isMuted }),
-
-  reset: () => set(initialState),
+  // Reset all state
+  reset: () => {
+    set({
+      sessionState: "idle",
+      isConnected: false,
+      intelligenceChips: [],
+      transcriptions: [],
+    });
+  },
 }));

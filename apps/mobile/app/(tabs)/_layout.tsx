@@ -1,53 +1,43 @@
-import { Tabs } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { Tabs } from "expo-router";
+import { MessageCircle, Users, User } from "@tamagui/lucide-icons";
+import { useTheme } from "tamagui";
 
 export default function TabLayout() {
+  const theme = useTheme();
+
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#8B5CF6',
-        tabBarInactiveTintColor: '#666666',
+        headerShown: false,
+        tabBarActiveTintColor: theme.accentBackground.val,
+        tabBarInactiveTintColor: theme.colorHover.val,
         tabBarStyle: {
-          backgroundColor: '#0D0D0D',
-          borderTopColor: '#1A1A1A',
-          borderTopWidth: 1,
-        },
-        headerStyle: {
-          backgroundColor: '#0D0D0D',
-        },
-        headerTintColor: '#FFFFFF',
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '500',
+          backgroundColor: theme.background.val,
+          borderTopColor: theme.borderColor.val,
         },
       }}
     >
       <Tabs.Screen
         name="chat"
         options={{
-          title: 'Brea',
-          headerShown: false,
+          title: "Chat",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="chatbubble" size={size} color={color} />
+            <MessageCircle size={size} color={color} />
           ),
         }}
       />
       <Tabs.Screen
         name="matches"
         options={{
-          title: 'Matches',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="heart" size={size} color={color} />
-          ),
+          title: "Matches",
+          tabBarIcon: ({ color, size }) => <Users size={size} color={color} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person" size={size} color={color} />
-          ),
+          title: "Profile",
+          tabBarIcon: ({ color, size }) => <User size={size} color={color} />,
         }}
       />
     </Tabs>

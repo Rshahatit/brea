@@ -1,6 +1,6 @@
-export { IntelligenceChip } from './IntelligenceChip';
-export { LiveCapturePanel } from './LiveCapturePanel';
-export { PushToTalkButton } from './PushToTalkButton';
-export { MatchCard } from './MatchCard';
-export { ConfidenceWidget } from './ConfidenceWidget';
-export { ConsentModal } from './ConsentModal';
+export { PushToTalkButton } from "./PushToTalkButton";
+export { LiveCapturePanel } from "./LiveCapturePanel";
+export { IntelligenceChip } from "./IntelligenceChip";
+export { MatchCard } from "./MatchCard";
+export { ConfidenceWidget } from "./ConfidenceWidget";
+export { VoiceOrb } from "./VoiceOrb";

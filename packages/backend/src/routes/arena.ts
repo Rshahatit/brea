@@ -1,240 +1,94 @@
-import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { z } from 'zod';
-import { authMiddleware } from '../middleware/auth.js';
-import { prisma } from '../lib/prisma.js';
-import {
-  runCompatibilitySimulation,
-  selectMatchCandidate,
-} from '../services/sandbox.js';
-import { getOrCreateProfile } from '../services/profile.js';
+import type { FastifyInstance } from "fastify";
+import { z } from "zod";
+import { prisma } from "../lib/prisma.js";
+import { authMiddleware } from "../middleware/auth.js";
+import { runSandboxSimulation } from "../services/sandbox.js";
 
-const ArenaRunSchema = z.object({
+const runArenaSchema = z.object({
   targetPersonaId: z.string().optional(),
 });
 
-export async function arenaRoutes(fastify: FastifyInstance) {
-  /**
-   * POST /arena/run
-   * Run a compatibility simulation
-   */
-  fastify.post(
-    '/arena/run',
-    { preHandler: authMiddleware },
-    async (
-      request: FastifyRequest<{ Body: { targetPersonaId?: string } }>,
-      reply: FastifyReply
-    ) => {
-      const userId = request.userId!;
+export async function arenaRoutes(app: FastifyInstance) {
+  // Run compatibility sandbox simulation
+  app.post("/arena/run", {
+    preHandler: authMiddleware,
+    handler: async (request, reply) => {
+      const body = runArenaSchema.parse(request.body);
+      const user = request.user!;
 
-      const parsed = ArenaRunSchema.safeParse(request.body);
-      if (!parsed.success) {
-        return reply.status(400).send({
-          error: 'Validation Error',
-          message: parsed.error.errors[0].message,
+      // Get full user profile
+      const userProfile = await prisma.user.findUnique({
+        where: { id: user.id },
+      });
+
+      if (!userProfile) {
+        return reply.status(404).send({
+          error: "User not found",
+          code: "USER_NOT_FOUND",
         });
       }
 
-      try {
-        // Get user's profile
-        const userProfile = await getOrCreateProfile(userId);
-
-        if (userProfile.values.length === 0 && userProfile.dealbreakers.length === 0) {
-          return reply.status(400).send({
-            error: 'Profile Incomplete',
-            message: 'Please complete your profile by talking to Brea first',
-          });
-        }
-
-        // Select a match candidate
-        const targetPersona = await selectMatchCandidate(
-          userId,
-          parsed.data.targetPersonaId
-        );
-
-        if (!targetPersona) {
-          return reply.status(404).send({
-            error: 'No Candidates',
-            message: 'No available candidates for matching. Please try again later.',
-          });
-        }
-
-        // Run the simulation
-        const result = await runCompatibilitySimulation(
-          {
-            values: userProfile.values,
-            dealbreakers: userProfile.dealbreakers,
-            personalityTags: (userProfile.personalityTags as Record<string, string>) || {},
-          },
-          {
-            values: targetPersona.values,
-            dealbreakers: targetPersona.dealbreakers,
-            personalityTags: targetPersona.personalityTags,
-            displayName: targetPersona.displayName,
-          }
-        );
-
-        // Create match record
-        const match = await prisma.match.create({
-          data: {
-            userId,
-            matchedWithId: targetPersona.id,
-            compatibilityScore: result.compatibilityScore,
-            confidenceLevel: result.confidenceLevel,
-            whyMatched: result.whyMatched,
-            potentialFriction: result.potentialFriction,
-            unknowns: result.unknowns,
-            transcript: result.transcript,
-            safetyStatus: result.safety.status,
-            safetyNotes: result.safety.notes,
-          },
-        });
-
-        return reply.send({
-          matchId: match.id,
-          result,
-          targetPersona: {
-            id: targetPersona.id,
-            displayName: targetPersona.displayName,
-            photoUrl: targetPersona.photoUrl,
-          },
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        return reply.status(500).send({
-          error: 'Simulation Failed',
-          message,
-        });
-      }
-    }
-  );
-
-  /**
-   * GET /arena/matches
-   * Get user's match history
-   */
-  fastify.get(
-    '/arena/matches',
-    { preHandler: authMiddleware },
-    async (request: FastifyRequest, reply: FastifyReply) => {
-      const userId = request.userId!;
-
-      try {
-        const matches = await prisma.match.findMany({
-          where: { userId },
-          include: {
-            matchedWith: {
-              include: {
-                profile: {
-                  select: {
-                    displayName: true,
-                    photoUrl: true,
-                  },
-                },
-              },
-            },
-            consentEvent: true,
-          },
-          orderBy: { createdAt: 'desc' },
-        });
-
-        return reply.send({
-          matches: matches.map((m) => ({
-            id: m.id,
-            compatibilityScore: m.compatibilityScore,
-            confidenceLevel: m.confidenceLevel,
-            whyMatched: m.whyMatched,
-            potentialFriction: m.potentialFriction,
-            unknowns: m.unknowns,
-            status: m.status,
-            matchedWith: {
-              displayName: m.matchedWith.profile?.displayName || 'Anonymous',
-              photoUrl: m.matchedWith.profile?.photoUrl,
-            },
-            consent: m.consentEvent
-              ? {
-                  action: m.consentEvent.action,
-                  inviteLink: m.consentEvent.inviteLink,
-                }
-              : null,
-            createdAt: m.createdAt,
-          })),
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        return reply.status(500).send({
-          error: 'Fetch Failed',
-          message,
-        });
-      }
-    }
-  );
-
-  /**
-   * GET /arena/matches/:matchId
-   * Get detailed match info (including redacted transcript)
-   */
-  fastify.get(
-    '/arena/matches/:matchId',
-    { preHandler: authMiddleware },
-    async (
-      request: FastifyRequest<{ Params: { matchId: string } }>,
-      reply: FastifyReply
-    ) => {
-      const userId = request.userId!;
-      const { matchId } = request.params;
-
-      try {
-        const match = await prisma.match.findFirst({
+      // Find a seed persona to match against
+      let targetPersona;
+      if (body.targetPersonaId) {
+        targetPersona = await prisma.user.findFirst({
           where: {
-            id: matchId,
-            userId,
-          },
-          include: {
-            matchedWith: {
-              include: {
-                profile: {
-                  select: {
-                    displayName: true,
-                    photoUrl: true,
-                    values: true,
-                  },
-                },
-              },
-            },
+            id: body.targetPersonaId,
+            isSeed: true,
           },
         });
+      } else {
+        // Random seed persona
+        const seedPersonas = await prisma.user.findMany({
+          where: { isSeed: true },
+        });
 
-        if (!match) {
-          return reply.status(404).send({
-            error: 'Not Found',
-            message: 'Match not found',
+        if (seedPersonas.length === 0) {
+          return reply.status(400).send({
+            error: "No seed personas available",
+            code: "NO_PERSONAS",
           });
         }
 
-        return reply.send({
-          id: match.id,
-          compatibilityScore: match.compatibilityScore,
-          confidenceLevel: match.confidenceLevel,
-          whyMatched: match.whyMatched,
-          potentialFriction: match.potentialFriction,
-          unknowns: match.unknowns,
-          transcript: match.transcript,
-          status: match.status,
-          safetyStatus: match.safetyStatus,
-          matchedWith: {
-            displayName: match.matchedWith.profile?.displayName || 'Anonymous',
-            photoUrl: match.matchedWith.profile?.photoUrl,
-            values: match.matchedWith.profile?.values || [],
-          },
-          createdAt: match.createdAt,
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        return reply.status(500).send({
-          error: 'Fetch Failed',
-          message,
+        targetPersona =
+          seedPersonas[Math.floor(Math.random() * seedPersonas.length)];
+      }
+
+      if (!targetPersona) {
+        return reply.status(404).send({
+          error: "Target persona not found",
+          code: "PERSONA_NOT_FOUND",
         });
       }
-    }
-  );
+
+      // Run the simulation
+      const result = await runSandboxSimulation(userProfile, targetPersona);
+
+      // Save the match
+      const match = await prisma.match.create({
+        data: {
+          userAId: user.id,
+          userBId: targetPersona.id,
+          compatibilityScore: result.compatibilityScore,
+          confidenceLevel: result.confidenceLevel,
+          whyMatched: result.whyMatched,
+          potentialFriction: result.potentialFriction,
+          unknowns: result.unknowns,
+          redactedTranscript: result.transcript,
+          safety: result.safety,
+          scenarioType: "LIFESTYLE_COMPATIBILITY",
+        },
+      });
+
+      return {
+        matchId: match.id,
+        result,
+        matchedProfile: {
+          id: targetPersona.id,
+          displayName: targetPersona.displayName,
+          photoUrl: targetPersona.photoUrl,
+        },
+      };
+    },
+  });
 }

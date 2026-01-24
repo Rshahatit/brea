@@ -1,25 +1,20 @@
-import { create } from 'zustand';
-import type { User, MatchResult, ProfileData } from '../types';
-import * as api from '../lib/api';
+import { create } from "zustand";
+import type { UserProfile, MatchResult } from "@brea/shared";
+import { api } from "../lib/api";
 
 interface ProfileState {
-  user: User | null;
+  profile: UserProfile | null;
   matches: MatchResult[];
   isLoading: boolean;
   error: string | null;
 
   // Actions
   fetchProfile: () => Promise<void>;
-  fetchMatches: () => Promise<void>;
-  updateProfile: (data: Partial<ProfileData>) => Promise<void>;
-  confirmHypothesis: (claim: string, confirmed: boolean) => Promise<void>;
   runArena: (targetPersonaId?: string) => Promise<MatchResult | null>;
-  submitConsent: (matchId: string, action: 'APPROVE' | 'REJECT') => Promise<string | null>;
-  clearError: () => void;
 }
 
 export const useProfileStore = create<ProfileState>((set, get) => ({
-  user: null,
+  profile: null,
   matches: [],
   isLoading: false,
   error: null,
@@ -28,121 +23,41 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      const user = await api.getMe();
-      set({ user, isLoading: false });
+      const response = await api.getMe();
+      set({
+        profile: response.user as unknown as UserProfile,
+        matches: response.matches as unknown as MatchResult[],
+        isLoading: false,
+      });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to fetch profile';
-      set({ error: message, isLoading: false });
+      console.error("Failed to fetch profile:", error);
+      set({
+        error: error instanceof Error ? error.message : "Failed to fetch profile",
+        isLoading: false,
+      });
     }
   },
 
-  fetchMatches: async () => {
-    set({ isLoading: true, error: null });
-
-    try {
-      const { matches } = await api.getMatches();
-      set({ matches, isLoading: false });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to fetch matches';
-      set({ error: message, isLoading: false });
-    }
-  },
-
-  updateProfile: async (data) => {
-    set({ isLoading: true, error: null });
-
-    try {
-      const { profile } = await api.updateProfile(data);
-      const currentUser = get().user;
-
-      if (currentUser) {
-        set({
-          user: { ...currentUser, profile },
-          isLoading: false,
-        });
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to update profile';
-      set({ error: message, isLoading: false });
-    }
-  },
-
-  confirmHypothesis: async (claim, confirmed) => {
-    try {
-      await api.confirmHypothesis(claim, confirmed);
-      // Refresh profile to get updated hypotheses
-      await get().fetchProfile();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to confirm hypothesis';
-      set({ error: message });
-    }
-  },
-
-  runArena: async (targetPersonaId) => {
+  runArena: async (targetPersonaId?: string) => {
     set({ isLoading: true, error: null });
 
     try {
       const response = await api.runArena(targetPersonaId);
-
-      const newMatch: MatchResult = {
-        id: response.matchId,
-        compatibilityScore: response.result.compatibilityScore,
-        confidenceLevel: response.result.confidenceLevel,
-        whyMatched: response.result.whyMatched,
-        potentialFriction: response.result.potentialFriction,
-        unknowns: response.result.unknowns,
-        transcript: response.result.transcript,
-        status: 'PENDING',
-        matchedWith: {
-          displayName: response.targetPersona.displayName,
-          photoUrl: response.targetPersona.photoUrl,
-        },
-        createdAt: new Date().toISOString(),
-      };
+      const match = response.result as unknown as MatchResult;
 
       set((state) => ({
-        matches: [newMatch, ...state.matches],
+        matches: [match, ...state.matches],
         isLoading: false,
       }));
 
-      return newMatch;
+      return match;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to run arena';
-      set({ error: message, isLoading: false });
-      return null;
-    }
-  },
-
-  submitConsent: async (matchId, action) => {
-    set({ isLoading: true, error: null });
-
-    try {
-      const response = await api.submitConsent(matchId, action);
-
-      // Update match in state
-      set((state) => ({
-        matches: state.matches.map((m) =>
-          m.id === matchId
-            ? {
-                ...m,
-                status: action === 'APPROVE' ? 'APPROVED' : 'REJECTED',
-                consent: {
-                  action,
-                  inviteLink: response.inviteLink,
-                },
-              }
-            : m
-        ),
+      console.error("Failed to run arena:", error);
+      set({
+        error: error instanceof Error ? error.message : "Failed to run simulation",
         isLoading: false,
-      }));
-
-      return response.inviteLink || null;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to submit consent';
-      set({ error: message, isLoading: false });
+      });
       return null;
     }
   },
-
-  clearError: () => set({ error: null }),
 }));

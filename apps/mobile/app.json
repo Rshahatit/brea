@@ -6,32 +6,31 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "brea",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0D0D0D"
+      "backgroundColor": "#000000"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.brea.app",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Brea needs access to your microphone for voice conversations.",
-        "NSCameraUsageDescription": "Brea needs access to your camera to take profile photos.",
-        "NSPhotoLibraryUsageDescription": "Brea needs access to your photo library to select profile photos."
+        "NSMicrophoneUsageDescription": "Brea needs microphone access to have voice conversations with you.",
+        "NSCameraUsageDescription": "Brea uses camera access for video calls (optional)."
       }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0D0D0D"
+        "backgroundColor": "#000000"
       },
       "package": "com.brea.app",
       "permissions": [
-        "RECORD_AUDIO",
-        "CAMERA",
-        "READ_EXTERNAL_STORAGE"
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -41,16 +40,16 @@
     },
     "plugins": [
       "expo-router",
+      "@daily-co/config-plugin-rn-daily-js",
       [
-        "expo-av",
+        "expo-build-properties",
         {
-          "microphonePermission": "Brea needs access to your microphone for voice conversations."
-        }
-      ],
-      [
-        "expo-image-picker",
-        {
-          "photosPermission": "Brea needs access to your photos for your profile."
+          "ios": {
+            "deploymentTarget": "15.1"
+          },
+          "android": {
+            "minSdkVersion": 24
+          }
         }
       ]
     ],

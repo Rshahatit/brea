@@ -1,96 +1,45 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
-import Animated, { FadeIn, SlideInUp } from 'react-native-reanimated';
-import { IntelligenceChip } from './IntelligenceChip';
-import { useBreaPStore } from '../stores/brea';
+import { XStack, YStack, Text, AnimatePresence } from "tamagui";
+import { useBreaStore } from "../stores/brea";
+import { IntelligenceChip } from "./IntelligenceChip";
 
 export function LiveCapturePanel() {
-  const { chips, currentTranscription, status } = useBreaPStore();
+  const { intelligenceChips, sessionState } = useBreaStore();
 
-  const showTranscription = status === 'speaking' && currentTranscription;
+  if (intelligenceChips.length === 0 && sessionState !== "listening") {
+    return null;
+  }
 
   return (
-    <Animated.View entering={SlideInUp.duration(300)} style={styles.container}>
-      {/* Current transcription */}
-      {showTranscription && (
-        <Animated.View entering={FadeIn.duration(200)} style={styles.transcriptionContainer}>
-          <Text style={styles.transcriptionLabel}>Brea is saying:</Text>
-          <Text style={styles.transcription}>{currentTranscription}</Text>
-        </Animated.View>
-      )}
+    <YStack
+      backgroundColor="$backgroundHover"
+      borderRadius={12}
+      padding={12}
+      minHeight={60}
+    >
+      <Text fontSize={10} color="$colorHover" marginBottom={8} textTransform="uppercase">
+        {sessionState === "listening" ? "Listening..." : "What Brea learned"}
+      </Text>
 
-      {/* Intelligence chips */}
-      {chips.length > 0 && (
-        <View style={styles.chipsSection}>
-          <Text style={styles.sectionTitle}>What I'm learning about you</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipsContainer}
-          >
-            {chips.map((chip, index) => (
-              <IntelligenceChip key={`${chip.type}-${chip.label}-${index}`} chip={chip} />
-            ))}
-          </ScrollView>
-        </View>
-      )}
+      <XStack flexWrap="wrap" gap={8}>
+        <AnimatePresence>
+          {intelligenceChips.map((chip, index) => (
+            <IntelligenceChip
+              key={`${chip.type}-${chip.value}-${index}`}
+              type={chip.type}
+              label={chip.label}
+              value={chip.value}
+              emoji={chip.emoji}
+              confirmed={chip.confirmed}
+            />
+          ))}
+        </AnimatePresence>
 
-      {/* Empty state */}
-      {chips.length === 0 && !showTranscription && (
-        <View style={styles.emptyState}>
-          <Text style={styles.emptyText}>
-            Start talking to Brea. I'll show what I learn here.
+        {sessionState === "listening" && intelligenceChips.length === 0 && (
+          <Text fontSize={12} color="$colorHover" fontStyle="italic">
+            Chips will appear as Brea learns about you...
           </Text>
-        </View>
-      )}
-    </Animated.View>
+        )}
+      </XStack>
+    </YStack>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    backgroundColor: '#1A1A1A',
-    borderRadius: 16,
-    padding: 16,
-    marginHorizontal: 16,
-    marginBottom: 16,
-    minHeight: 100,
-  },
-  transcriptionContainer: {
-    marginBottom: 12,
-  },
-  transcriptionLabel: {
-    color: '#A0A0A0',
-    fontSize: 12,
-    marginBottom: 4,
-  },
-  transcription: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  chipsSection: {
-    marginTop: 8,
-  },
-  sectionTitle: {
-    color: '#A0A0A0',
-    fontSize: 12,
-    marginBottom: 10,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  chipsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 20,
-  },
-  emptyText: {
-    color: '#666666',
-    fontSize: 14,
-    textAlign: 'center',
-  },
-});

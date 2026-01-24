@@ -1,101 +1,77 @@
-import type { FastifyRequest, FastifyReply } from 'fastify';
-import { verifyToken } from '../lib/firebase.js';
-import { prisma } from '../lib/prisma.js';
+import type { FastifyRequest, FastifyReply } from "fastify";
+import { firebaseAuth } from "../lib/firebase.js";
+import { prisma } from "../lib/prisma.js";
 
-// Extend FastifyRequest to include user
-declare module 'fastify' {
+export interface AuthenticatedUser {
+  id: string;
+  firebaseUid: string;
+  isAnonymous: boolean;
+}
+
+declare module "fastify" {
   interface FastifyRequest {
-    userId?: string;
-    firebaseUid?: string;
-    isAnonymous?: boolean;
+    user?: AuthenticatedUser;
   }
 }
 
-/**
- * Authentication middleware - verifies Firebase token and attaches user info
- */
 export async function authMiddleware(
   request: FastifyRequest,
   reply: FastifyReply
-): Promise<void> {
+) {
+  if (!firebaseAuth) {
+    return reply.status(503).send({
+      error: "Auth service not configured",
+      code: "AUTH_NOT_CONFIGURED",
+    });
+  }
+
   const authHeader = request.headers.authorization;
 
-  if (!authHeader?.startsWith('Bearer ')) {
+  if (!authHeader?.startsWith("Bearer ")) {
     return reply.status(401).send({
-      error: 'Unauthorized',
-      message: 'Missing or invalid Authorization header',
+      error: "Unauthorized",
+      code: "MISSING_TOKEN",
     });
   }
 
   const token = authHeader.slice(7);
 
   try {
-    // Verify Firebase token
-    const decodedToken = await verifyToken(token);
-    const firebaseUid = decodedToken.uid;
+    const decodedToken = await firebaseAuth.verifyIdToken(token);
 
-    // Find or create user in our database
+    // Find or create user
     let user = await prisma.user.findUnique({
-      where: { firebaseUid },
+      where: { firebaseUid: decodedToken.uid },
     });
 
     if (!user) {
       // Create new user (anonymous by default)
       user = await prisma.user.create({
         data: {
-          firebaseUid,
-          isAnonymous: true,
+          firebaseUid: decodedToken.uid,
+          isAnonymous: decodedToken.firebase.sign_in_provider === "anonymous",
+          email: decodedToken.email,
+          phone: decodedToken.phone_number,
         },
       });
-    } else {
-      // Update last active timestamp
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { lastActiveAt: new Date() },
-      });
     }
 
-    // Attach user info to request
-    request.userId = user.id;
-    request.firebaseUid = firebaseUid;
-    request.isAnonymous = user.isAnonymous;
+    // Update last active timestamp
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastActiveAt: new Date() },
+    });
+
+    request.user = {
+      id: user.id,
+      firebaseUid: user.firebaseUid,
+      isAnonymous: user.isAnonymous,
+    };
   } catch (error) {
+    console.error("Auth error:", error);
     return reply.status(401).send({
-      error: 'Unauthorized',
-      message: 'Invalid or expired token',
+      error: "Invalid token",
+      code: "INVALID_TOKEN",
     });
-  }
-}
-
-/**
- * Optional auth middleware - allows unauthenticated requests but attaches user if present
- */
-export async function optionalAuthMiddleware(
-  request: FastifyRequest,
-  _reply: FastifyReply
-): Promise<void> {
-  const authHeader = request.headers.authorization;
-
-  if (!authHeader?.startsWith('Bearer ')) {
-    return; // No auth, continue without user
-  }
-
-  const token = authHeader.slice(7);
-
-  try {
-    const decodedToken = await verifyToken(token);
-    const firebaseUid = decodedToken.uid;
-
-    const user = await prisma.user.findUnique({
-      where: { firebaseUid },
-    });
-
-    if (user) {
-      request.userId = user.id;
-      request.firebaseUid = firebaseUid;
-      request.isAnonymous = user.isAnonymous;
-    }
-  } catch {
-    // Invalid token, continue without user
   }
 }

@@ -1,73 +1,78 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import {
-  initializeAuth,
-  getAuth,
-  signInAnonymously,
-  onAuthStateChanged,
-  User as FirebaseUser,
-  getReactNativePersistence,
-} from 'firebase/auth';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+/**
+ * Simple auth module that generates a unique anonymous user ID.
+ * For MVP - can be replaced with Firebase or other auth later.
+ */
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-// Firebase configuration - replace with your actual config
-const firebaseConfig = {
-  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || 'your-api-key',
-  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || 'your-project.firebaseapp.com',
-  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || 'your-project-id',
-  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || 'your-project.appspot.com',
-  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '123456789',
-  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || '1:123456789:web:abc123',
-};
+const USER_ID_KEY = "@brea/user_id";
 
-// Initialize Firebase
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+interface User {
+  uid: string;
+  isAnonymous: boolean;
+}
 
-// Initialize Auth with AsyncStorage persistence
-const auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(AsyncStorage),
-});
+let currentUser: User | null = null;
 
 /**
- * Sign in anonymously
- * This is called automatically on app launch
+ * Generate a simple UUID v4
  */
-export async function signInAnon(): Promise<FirebaseUser> {
-  const userCredential = await signInAnonymously(auth);
-  return userCredential.user;
+function generateUUID(): string {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
 }
 
 /**
- * Get the current user's ID token
- * Used for authenticating API requests
+ * Initialize auth - creates or retrieves anonymous user
  */
-export async function getIdToken(): Promise<string | null> {
-  const user = auth.currentUser;
-  if (!user) return null;
-  return user.getIdToken();
+export async function initAuth(): Promise<User | null> {
+  try {
+    // Check for existing user ID
+    let userId = await AsyncStorage.getItem(USER_ID_KEY);
+
+    if (!userId) {
+      // Generate new anonymous user ID
+      userId = generateUUID();
+      await AsyncStorage.setItem(USER_ID_KEY, userId);
+      console.log("[Auth] Created new anonymous user:", userId);
+    } else {
+      console.log("[Auth] Found existing user:", userId);
+    }
+
+    currentUser = {
+      uid: userId,
+      isAnonymous: true,
+    };
+
+    return currentUser;
+  } catch (error) {
+    console.error("[Auth] Initialization failed:", error);
+    return null;
+  }
 }
 
 /**
- * Subscribe to auth state changes
+ * Get current user (sync, returns cached value)
  */
-export function subscribeToAuthState(
-  callback: (user: FirebaseUser | null) => void
-): () => void {
-  return onAuthStateChanged(auth, callback);
+export function getCurrentUser(): User | null {
+  return currentUser;
 }
 
 /**
- * Get the current user
+ * Get auth token - for MVP, just return the user ID
+ * In production, this would be a JWT from your backend
  */
-export function getCurrentUser(): FirebaseUser | null {
-  return auth.currentUser;
+export async function getAuthToken(): Promise<string | null> {
+  return currentUser?.uid ?? null;
 }
 
 /**
- * Check if user is anonymous
+ * Sign out - clears the stored user ID
  */
-export function isUserAnonymous(): boolean {
-  return auth.currentUser?.isAnonymous ?? true;
+export async function signOut(): Promise<void> {
+  await AsyncStorage.removeItem(USER_ID_KEY);
+  currentUser = null;
+  console.log("[Auth] Signed out");
 }
-
-export { auth, app };
-export type { FirebaseUser };

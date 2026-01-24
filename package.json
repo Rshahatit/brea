@@ -1,23 +1,25 @@
 {
-  "name": "brea-monorepo",
-  "version": "1.0.0",
+  "name": "brea",
+  "version": "0.1.0",
   "private": true,
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
+  "description": "Brea - AI Dating Liaison",
   "scripts": {
-    "backend": "npm run dev --workspace=@brea/backend",
-    "mobile": "npm run start --workspace=@brea/mobile",
-    "build:backend": "npm run build --workspace=@brea/backend",
-    "db:generate": "npm run db:generate --workspace=@brea/backend",
-    "db:push": "npm run db:push --workspace=@brea/backend",
-    "db:migrate": "npm run db:migrate --workspace=@brea/backend"
+    "dev:backend": "pnpm --filter @brea/backend dev",
+    "dev:mobile": "pnpm --filter @brea/mobile start",
+    "build:backend": "pnpm --filter @brea/backend build",
+    "db:generate": "pnpm --filter @brea/backend db:generate",
+    "db:push": "pnpm --filter @brea/backend db:push",
+    "db:seed": "pnpm --filter @brea/backend db:seed",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck"
   },
   "devDependencies": {
+    "@types/node": "^20.11.0",
     "typescript": "^5.3.3"
   },
   "engines": {
-    "node": ">=20.0.0"
-  }
+    "node": ">=20.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "packageManager": "pnpm@8.15.0"
 }
